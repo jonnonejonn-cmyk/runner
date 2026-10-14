@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>APEX RUN PRO v4</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg: #07090e; --card: rgba(16, 20, 29, 0.95); --card-solid: #121722;
+  --border: rgba(255, 255, 255, 0.12); --lime: #ccff00; --lime-glow: rgba(204, 255, 0, 0.25);
+  --cyan: #00e5ff; --cyan-glow: rgba(0, 229, 255, 0.2); --red: #ff3355; --muted: #8b95a8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; user-select: none; -webkit-tap-highlight-color: transparent; }
+body, html { width: 100%; height: 100dvh; overflow: hidden; background: var(--bg); color: #fff; }
+.dark-map .leaflet-tile-pane { filter: invert(100%) hue-rotate(180deg) brightness(93%) contrast(92%); }
+
+#lockScreen {
+  position: fixed; inset: 0; z-index: 9999; background: #07090e;
+  display: none; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center;
+}
+.pin-dots { display: flex; gap: 12px; margin: 18px 0; }
+.pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--lime); }
+.pin-dot.filled { background: var(--lime); box-shadow: 0 0 10px var(--lime); }
+.numpad { display: grid; grid-template-columns: repeat(3, 70px); gap: 10px; }
+.num-btn { height: 56px; border-radius: 16px; background: rgba(255,255,255,0.07); border: 1px solid var(--border); color: #fff; font-size: 21px; font-weight: 800; }
+.num-btn:active { background: var(--lime); color: #000; }
+
+.top-bar {
+  position: absolute; top: 10px; left: 10px; right: 10px; z-index: 25;
+  display: flex; justify-content: space-between; align-items: center; gap: 5px; pointer-events: none;
+}
+.glass-pill {
+  pointer-events: auto; background: rgba(14, 18, 26, 0.92); padding: 7px 11px;
+  border-radius: 18px; font-size: 11px; font-weight: 800; border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+}
+.gps-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffaa00; }
+.gps-dot.ok { background: #00ff66; box-shadow: 0 0 8px #00ff66; }
+.gps-dot.bad { background: #ff3355; }
+.top-actions { display: flex; gap: 5px; pointer-events: auto; }
+.icon-btn {
+  height: 35px; padding: 0 10px; border-radius: 18px; background: rgba(14, 18, 26, 0.92);
+  border: 1px solid var(--lime); color: var(--lime); font-size: 11px; font-weight: 800; cursor: pointer;
+}
+
+#map { position: absolute; inset: 0; z-index: 1; background: #10141d; }
+.runner-pin { width: 18px; height: 18px; background: var(--lime); border: 3px solid #000; border-radius: 50%; box-shadow: 0 0 0 6px rgba(204,255,0,0.35); }
+.km-badge { background: #0b0f17; color: var(--cyan); border: 2px solid var(--cyan); border-radius: 50%; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+.wp-badge { background: var(--lime); color: #000; border: 2px solid #000; border-radius: 50%; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+
+.toast {
+  position: absolute; top: 56px; left: 12px; right: 12px; z-index: 30;
+  background: #101620; border-left: 4px solid var(--lime); border-radius: 14px;
+  padding: 10px 14px; display: none; justify-content: space-between; align-items: center;
+}
+
+.tab-view { display: none; position: absolute; inset: 0; z-index: 15; pointer-events: none; }
+.tab-view.active { display: block; }
+.full-page { pointer-events: auto; position: absolute; inset: 0; bottom: 64px; background: var(--bg); overflow-y: auto; padding: 58px 14px 24px; }
+
+.bottom-sheet {
+  pointer-events: auto; position: absolute; bottom: 64px; left: 0; right: 0;
+  background: var(--card); backdrop-filter: blur(18px); border-radius: 22px 22px 0 0;
+  border-top: 1px solid var(--border); padding: 12px 14px 14px;
+}
+.route-card { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 16px; padding: 10px; margin-bottom: 9px; }
+.row { display: flex; gap: 6px; align-items: center; }
+.row-between { display: flex; justify-content: space-between; align-items: center; }
+
+.mode-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 7px 0; }
+.mode-pill { padding: 6px 4px; border-radius: 9px; background: rgba(255,255,255,0.05); color: var(--muted); font-size: 11px; font-weight: 800; text-align: center; cursor: pointer; }
+.mode-pill.act { background: var(--cyan-glow); border: 1px solid var(--cyan); color: var(--cyan); }
+
+.dist-pills { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin: 7px 0; }
+.dp { padding: 7px 0; background: rgba(255,255,255,0.06); border-radius: 10px; font-size: 12px; font-weight: 800; text-align: center; cursor: pointer; }
+.dp.act { background: var(--lime-glow); border: 1px solid var(--lime); color: var(--lime); }
+
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 9px; }
+.metric-box { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; padding: 7px 4px; text-align: center; }
+.m-val { font-size: 18px; font-weight: 900; }
+.m-lbl { font-size: 9px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+
+.btn { border: none; border-radius: 12px; padding: 11px; font-size: 13px; font-weight: 900; cursor: pointer; width: 100%; text-align: center; }
+.btn-lime { background: var(--lime); color: #000; }
+.btn-cyan { background: var(--cyan-glow); color: var(--cyan); border: 1px solid var(--cyan); }
+.btn-dark { background: rgba(255,255,255,0.1); color: #fff; }
+.btn-red { background: var(--red); color: #fff; }
+
+.tab-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 64px; z-index: 40; background: #0b0e15; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(3, 1fr); }
+.tab-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); font-size: 10px; font-weight: 800; cursor: pointer; }
+.tab-item.act { color: var(--lime); }
+
+.stat-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.sh-card { background: var(--card-solid); border: 1px solid var(--border); border-radius: 14px; padding: 10px 8px; text-align: center; }
+.sh-val { font-size: 18px; font-weight: 900; color: var(--lime); }
+.sh-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+.run-item { background: var(--card-solid); border: 1px solid var(--border); border-radius: 16px; padding: 10px; margin-bottom: 9px; display: flex; gap: 10px; align-items: center; }
+.mini-track { width: 60px; height: 60px; border-radius: 12px; background: #0a0d14; border: 1px solid rgba(0,229,255,0.25); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.run-info { flex: 1; }
+.run-title { font-size: 14px; font-weight: 900; display: flex; justify-content: space-between; }
+.run-sub { font-size: 11px; color: var(--muted); margin: 3px 0 5px; }
+.r-badge { background: rgba(255,255,255,0.06); padding: 3px 7px; border-radius: 6px; font-size: 10px; font-weight: 700; margin-right: 4px; }
+.del-run-btn { width: 36px; height: 36px; border-radius: 10px; background: rgba(255,51,85,0.2); border: 1px solid var(--red); color: var(--red); font-size: 15px; cursor: pointer; flex-shrink: 0; }
+
+.sec-card { background: var(--card-solid); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
+.sec-card h4 { font-size: 14px; margin-bottom: 6px; color: var(--lime); }
+.sec-card p { font-size: 12px; color: var(--muted); line-height: 1.45; margin-bottom: 10px; }
+.inp { width: 100%; background: #080b10; border: 1px solid var(--border); border-radius: 10px; padding: 10px; color: #fff; font-size: 13px; margin-bottom: 8px; }
+
+.modal { position: fixed; inset: 0; z-index: 100; background: rgba(5,7,11,0.92); display: none; align-items: center; justify-content: center; padding: 14px; }
+.mcard { background: #121722; border: 1px solid var(--lime); border-radius: 20px; width: 100%; max-width: 420px; max-height: 88dvh; overflow-y: auto; padding: 16px; }
+.rgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 10px 0; }
+.ri { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 10px; font-size: 11px; color: var(--muted); }
+.ri b { display: block; font-size: 14px; margin-top: 2px; color: var(--lime); }
+</style>
+</head>
+<body>
+  <div id="lockScreen">
+  <h2 style="color:var(--lime)">🛡️ ВВЕДИ PIN-КОД</h2>
+  <p id="lockSub" style="font-size:12px;color:var(--muted);margin-top:4px">Защита аккаунта APEX RUN</p>
+  <div class="pin-dots">
+    <div class="pin-dot" id="pd0"></div><div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div><div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="numpad">
+    <button class="num-btn" onclick="pressPin('1')">1</button><button class="num-btn" onclick="pressPin('2')">2</button><button class="num-btn" onclick="pressPin('3')">3</button>
+    <button class="num-btn" onclick="pressPin('4')">4</button><button class="num-btn" onclick="pressPin('5')">5</button><button class="num-btn" onclick="pressPin('6')">6</button>
+    <button class="num-btn" onclick="pressPin('7')">7</button><button class="num-btn" onclick="pressPin('8')">8</button><button class="num-btn" onclick="pressPin('9')">9</button>
+    <button class="num-btn" onclick="clearPin()" style="color:var(--red)">C</button><button class="num-btn" onclick="pressPin('0')">0</button><button class="num-btn" onclick="clearPin()">⌫</button>
+  </div>
+</div>
+
+<div class="top-bar">
+  <div class="glass-pill">
+    <div class="gps-dot" id="gpsDot"></div>
+    <span id="gpsTxt">📡 GPS...</span>
+  </div>
+  <div class="top-actions">
+    <button class="icon-btn" id="layerBtn" onclick="switchMapStyle()">☀️ Схема</button>
+    <button class="icon-btn" onclick="connectBotOneClick()">🤖 В ТГ</button>
+    <button class="icon-btn" onclick="locateUser(true)">🎯 Я</button>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <span id="tTitle" style="font-weight:900;color:var(--lime)">⚡ 1 КМ!</span>
+  <span id="tPace" style="font-weight:800;color:var(--cyan)">4:45 /км</span>
+</div>
+
+<div id="map"></div>
+
+<!-- ВКЛАДКА 1: БЕГ -->
+<div class="tab-view active" id="tab-run">
+  <div class="bottom-sheet">
+    <div class="route-card" id="routeBuilderBox">
+      <div class="row-between" style="font-size:12px;font-weight:800">
+        <span id="rInfo" style="color:var(--lime)">✅ Маршрут: 3.00 км</span>
+        <span id="customHint" style="font-size:11px;color:var(--cyan);cursor:pointer;display:none" onclick="clearCustomPts()">🗑 Сброс</span>
+      </div>
+      <div class="mode-pills">
+        <div class="mode-pill act" id="mp-loop" onclick="setRouteMode('loop')">🌳 Улицы/Парки</div>
+        <div class="mode-pill" id="mp-back" onclick="setRouteMode('back')">⇄ Туда-обратно</div>
+        <div class="mode-pill" id="mp-custom" onclick="setRouteMode('custom')">✍️ Свои точки</div>
+      </div>
+      <div class="dist-pills" id="distSelector">
+        <div class="dp" onclick="setKm(1,this)">1 км</div>
+        <div class="dp act" onclick="setKm(3,this)">3 км</div>
+        <div class="dp" onclick="setKm(5,this)">5 км</div>
+        <div class="dp" onclick="setKm(7,this)">7 км</div>
+        <div class="dp" onclick="setKm(10,this)">10 км</div>
+      </div>
+      <div class="row">
+        <button class="btn btn-cyan" id="genBtn" onclick="buildSmartRoute(false)">⚡ Построить маршрут</button>
+        <button class="btn btn-dark" style="width:50px" onclick="buildSmartRoute(true)">🎲</button>
+      </div>
+    </div>
+
+    <div class="row-between" id="simBar" style="display:none;margin-bottom:8px;font-size:12px;background:var(--cyan-glow);padding:6px 10px;border-radius:10px">
+      <span>🚀 Тест:</span>
+      <div class="row">
+        <button class="icon-btn" onclick="simMult=2">2x</button>
+        <button class="icon-btn" onclick="simMult=8">8x</button>
+        <button class="icon-btn" onclick="simMult=25">25x</button>
+      </div>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-box"><div class="m-val" style="color:var(--lime)" id="vDist">0.00</div><div class="m-lbl">КМ</div></div>
+      <div class="metric-box"><div class="m-val" id="vTime">00:00</div><div class="m-lbl">ВРЕМЯ</div></div>
+      <div class="metric-box"><div class="m-val" style="color:var(--cyan)" id="vPace">0:00</div><div class="m-lbl">ТЕМП</div></div>
+      <div class="metric-box"><div class="m-val" id="vKcal">0</div><div class="m-lbl">ККАЛ</div></div>
+    </div>
+
+    <div class="row" id="startRow">
+      <button class="btn btn-lime" onclick="startRun(false)">▶ НАЧАТЬ БЕГ</button>
+      <button class="btn btn-dark" style="width:42%" onclick="startRun(true)">🧪 Тест</button>
+    </div>
+    <div class="row" id="runRow" style="display:none">
+      <button class="btn btn-dark" id="pBtn" onclick="togglePause()">⏸ Пауза</button>
+      <button class="btn btn-red" onclick="finishRun()">⏹ Финиш</button>
+    </div>
+  </div>
+</div>
+
+<!-- ВКЛАДКА 2: МОИ БЕГА -->
+<div class="tab-view" id="tab-history">
+  <div class="full-page">
+    <div class="row-between" style="margin-bottom:12px">
+      <h2 style="font-size:18px;font-weight:900">📊 Мои пробежки</h2>
+      <div class="row">
+        <button class="icon-btn" onclick="exportRunsToBot()">📤 В ТГ</button>
+        <button class="icon-btn" style="border-color:var(--red);color:var(--red)" onclick="clearAllRuns()">🧹 Удалить все</button>
+      </div>
+    </div>
+    <div class="stat-hero">
+      <div class="sh-card"><div class="sh-val" id="stTotalKm">0.0</div><div class="sh-lbl">ВСЕГО КМ</div></div>
+      <div class="sh-card"><div class="sh-val" id="stRunsCnt">0</div><div class="sh-lbl">ЗАБЕГОВ</div></div>
+      <div class="sh-card"><div class="sh-val" style="color:var(--cyan)" id="stBestPace">--:--</div><div class="sh-lbl">ЛУЧШИЙ ТЕМП</div></div>
+    </div>
+    <div id="runsList"></div>
+  </div>
+</div>
+
+<!-- ВКЛАДКА 3: ЗАЩИТА И ТГ -->
+<div class="tab-view" id="tab-security">
+  <div class="full-page">
+    <h2 style="font-size:18px;font-weight:900;margin-bottom:12px">🛡️ Защита и Привязка к ТГ</h2>
+    <div class="sec-card">
+      <h4>📲 Привязать это приложение к моему Боту</h4>
+      <p>Нажми кнопку ниже — и в твоём боте в Telegram сразу появится синяя кнопка запуска этого приложения:</p>
+      <button class="btn btn-lime" onclick="connectBotOneClick()">🚀 ПОДКЛЮЧИТЬ К БОТУ В ТГ (В 1 КЛИК)</button>
+    </div>
+    <div class="sec-card">
+      <h4>🔐 PIN-код на вход</h4>
+      <p id="secUserStatus">Защита активна</p>
+      <div class="row">
+        <button class="btn btn-cyan" onclick="setupPinLock()">Установить PIN</button>
+        <button class="btn btn-dark" onclick="disablePinLock()">Сбросить PIN</button>
+      </div>
+    </div>
+    <div class="sec-card">
+      <h4>📥 Отправить чистый HTML-файл в бота</h4>
+      <button class="btn btn-cyan" onclick="downloadOrSendCleanHtml()">📥 Прислать файл мне в Telegram</button>
+    </div>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <div class="tab-item act" onclick="switchTab('run', this)"><span>🏃</span><span>Забег</span></div>
+  <div class="tab-item" onclick="switchTab('history', this)"><span>📊</span><span>Мои бега</span></div>
+  <div class="tab-item" onclick="switchTab('security', this)"><span>🛡️</span><span>Защита и ТГ</span></div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="mcard">
+    <h3 style="color:var(--lime);font-size:16px">🏆 ОТЧЁТ О ПРОБЕЖКЕ</h3>
+    <div class="rgrid" id="repGrid"></div>
+    <div id="repSplits" style="font-size:12px;margin:10px 0;line-height:1.5"></div>
+    <div class="row">
+      <button class="btn btn-lime" onclick="closeModalAndShowHistory()">📊 Мои бега</button>
+      <button class="btn btn-dark" onclick="document.getElementById('modal').style.display='none'">Закрыть</button>
+    </div>
+  </div>
+</div>
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const OWNER_ID = 7468512023;
+const tgUser = tg?.initDataUnsafe?.user || { id: OWNER_ID, first_name: "Леонид" };
+
+let map, tileLayer, mapStyle = 0, marker, accuracyCircle, planLine, trackLine, kmPins = [], customMarkers = [];
+let pos = { lat: 55.4851, lng: 37.3052 }, hasRealGps = false;
+let goalKm = 3, routeMode = 'loop', angle = 40, routePts = [], customPts = [];
+let running = false, paused = false, sim = false, simMult = 8, simIdx = 0, timer = null, simTimer = null;
+let dist = 0, secs = 0, steps = 0, maxSpd = 0, lastKm = 0, lastSec = 0, splits = [], track = [];
+
+// Карты "Схема", "Тёмная" и "Спутник", которые работают везде без блокировок
+const TILES = [
+  { name: "☀️ Схема", url: "https://mt1.google.com/vt/lyrs=m&hl=ru&x={x}&y={y}&z={z}", fb: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", dark: false },
+  { name: "🗺 Тёмная", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", fb: "https://mt1.google.com/vt/lyrs=m&hl=ru&x={x}&y={y}&z={z}", dark: true },
+  { name: "🛰 Спутник", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", fb: "https://mt1.google.com/vt/lyrs=s&hl=ru&x={x}&y={y}&z={z}", dark: false }
+];
+
+function initApp() {
+  initVault();
+  checkSecurityLock();
+  updateSecurityUI();
+
+  const mapEl = document.getElementById('map');
+  mapEl.innerHTML = "";
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView([pos.lat, pos.lng], 15);
+  applyTileLayer(0);
+
+  accuracyCircle = L.circle([pos.lat, pos.lng], { radius: 0, color: '#00e5ff', weight: 1, fillOpacity: 0.1 }).addTo(map);
+  marker = L.marker([pos.lat, pos.lng], { icon: L.divIcon({ className: 'runner-pin', iconSize: [18, 18] }) }).addTo(map);
+  planLine = L.polyline([], { color: '#00e5ff', weight: 5, dashArray: '8,8' }).addTo(map);
+  trackLine = L.polyline([], { color: '#ccff00', weight: 6 }).addTo(map);
+
+  new ResizeObserver(() => { if (map) map.invalidateSize(); }).observe(mapEl);
+
+  map.on('click', e => {
+    if (running) return;
+    if (routeMode === 'custom') {
+      customPts.push([e.latlng.lat, e.latlng.lng]);
+      customMarkers.push(L.marker(e.latlng, { icon: L.divIcon({ className: 'wp-badge', html: customPts.length, iconSize: [20, 20] }) }).addTo(map));
+      buildCustomRoute();
+    } else {
+      pos = { lat: e.latlng.lat, lng: e.latlng.lng };
+      marker.setLatLng(pos);
+      buildSmartRoute(false);
+    }
+  });
+
+  startContinuousGPS();
+  loadRunsHistory();
+  setTimeout(() => buildSmartRoute(false), 350);
+}
+
+function applyTileLayer(idx) {
+  if (tileLayer) map.removeLayer(tileLayer);
+  const cfg = TILES[idx];
+  tileLayer = L.tileLayer(cfg.url, { maxZoom: 19 });
+  tileLayer.on('tileerror', e => {
+    if (cfg.fb && e.tile && !e.tile.dataset.r) {
+      e.tile.dataset.r = "1";
+      e.tile.src = cfg.fb.replace('{z}', e.coords.z).replace('{y}', e.coords.y).replace('{x}', e.coords.x);
+    }
+  });
+  tileLayer.addTo(map);
+  document.getElementById('map').classList.toggle('dark-map', cfg.dark);
+  document.getElementById('layerBtn').innerText = cfg.name;
+}
+
+function switchMapStyle() {
+  mapStyle = (mapStyle + 1) % TILES.length;
+  applyTileLayer(mapStyle);
+}
+
+function startContinuousGPS() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.watchPosition(p => {
+    const acc = Math.round(p.coords.accuracy || 40);
+    document.getElementById('gpsTxt').innerText = `GPS ±${acc}м`;
+    document.getElementById('gpsDot').className = 'gps-dot ' + (acc <= 25 ? 'ok' : '');
+
+    if (!hasRealGps) {
+      pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+      hasRealGps = true;
+      marker.setLatLng(pos);
+      map.setView(pos, 16);
+      buildSmartRoute(false);
+    } else if (running && !sim && !paused && acc <= 35) {
+      pos = { lat: pos.lat * 0.25 + p.coords.latitude * 0.75, lng: pos.lng * 0.25 + p.coords.longitude * 0.75 };
+      moveRunner(pos, p.coords.speed);
+    } else if (!running) {
+      pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+      marker.setLatLng(pos);
+    }
+    accuracyCircle.setLatLng(pos).setRadius(acc <= 90 ? acc : 0);
+  }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+}
+
+function locateUser(center) {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(p => {
+      pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+      hasRealGps = true;
+      marker.setLatLng(pos);
+      if (center) map.setView(pos, 16);
+      buildSmartRoute(false);
+    }, () => alert("Тапни пальцем на свой дом на карте!"), { enableHighAccuracy: true, timeout: 6000 });
+  }
+}
+
+function setRouteMode(m) {
+  routeMode = m;
+  ['loop', 'back', 'custom'].forEach(k => document.getElementById('mp-' + k).classList.toggle('act', k === m));
+  document.getElementById('distSelector').style.display = m === 'custom' ? 'none' : 'grid';
+  document.getElementById('customHint').style.display = m === 'custom' ? 'inline' : 'none';
+  if (m === 'custom') { clearCustomPts(); document.getElementById('rInfo').innerText = "👆 Тапай точки по улицам на карте"; }
+  else buildSmartRoute(false);
+}
+
+function setKm(k, el) {
+  goalKm = k;
+  document.querySelectorAll('.dp').forEach(x => x.classList.remove('act'));
+  el.classList.add('act');
+  buildSmartRoute(false);
+}
+
+function clearCustomPts() {
+  customPts = [];
+  customMarkers.forEach(m => map.removeLayer(m));
+  customMarkers = [];
+  planLine.setLatLngs([]);
+  kmPins.forEach(m => map.removeLayer(m));
+  kmPins = [];
+}
+
+async function buildCustomRoute() {
+  const all = [[pos.lat, pos.lng], ...customPts];
+  if (all.length < 2) return;
+  try {
+    const q = all.map(p => `${p[1].toFixed(5)},${p[0].toFixed(5)}`).join(';');
+    const r = await fetch(`https://router.project-osrm.org/route/v1/foot/${q}?overview=full&geometries=geojson`);
+    const d = await r.json();
+    if (d.routes?.[0]) renderPlannedRoute(d.routes[0].geometry.coordinates.map(c => [c[1], c[0]]));
+  } catch (e) {}
+}
+
+async function buildSmartRoute(rot) {
+  if (routeMode === 'custom') { buildCustomRoute(); return; }
+  if (rot) angle = (angle + 65) % 360;
+  document.getElementById('genBtn').innerText = "⏳ Расчёт по улицам...";
+  const isLoop = routeMode === 'loop';
+  const rad = isLoop ? goalKm / 4.2 : goalKm / 1.9;
+  const wps = isLoop
+    ? [pos, dest(pos.lat, pos.lng, rad, angle - 35), dest(pos.lat, pos.lng, rad * 1.3, angle), dest(pos.lat, pos.lng, rad, angle + 35), pos]
+    : [pos, dest(pos.lat, pos.lng, rad, angle)];
+
+  try {
+    const q = wps.map(p => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+    const r = await fetch(`https://router.project-osrm.org/route/v1/foot/${q}?overview=full&geometries=geojson`);
+    const d = await r.json();
+    if (d.routes?.[0]) {
+      let raw = d.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+      let len = totalLen(raw);
+      let pts = (!isLoop || len > goalKm * 1.2 || len < goalKm * 0.8) ? trimAndMirrorToExactKm(raw, goalKm) : raw;
+      renderPlannedRoute(pts);
+    }
+  } catch (e) {}
+  document.getElementById('genBtn').innerText = "⚡ Построить маршрут";
+}
+
+function renderPlannedRoute(pts) {
+  routePts = pts;
+  planLine.setLatLngs(pts);
+  map.fitBounds(planLine.getBounds(), { padding: [40, 40] });
+  kmPins.forEach(m => map.removeLayer(m));
+  kmPins = [];
+  let acc = 0, nk = 1;
+  for (let i = 1; i < pts.length; i++) {
+    acc += hav(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+    if (acc >= nk && nk <= 25) {
+      kmPins.push(L.marker(pts[i], { icon: L.divIcon({ className: 'km-badge', html: nk, iconSize: [20, 20] }) }).addTo(map));
+      nk++;
+    }
+  }
+  document.getElementById('rInfo').innerText = `✅ Маршрут: ${acc.toFixed(2)} км (~${Math.round(acc * 5.3)} мин)`;
+}
+  function startRun(isSim) {
+  if (isSim && (!routePts || routePts.length < 2)) { alert("Сначала построй маршрут!"); return; }
+  running = true; paused = false; sim = isSim; simIdx = 0;
+  dist = 0; secs = 0; steps = 0; maxSpd = 0; lastKm = 0; lastSec = 0; splits = [];
+  track = [[pos.lat, pos.lng]]; trackLine.setLatLngs(track);
+
+  document.getElementById('routeBuilderBox').style.display = 'none';
+  document.getElementById('startRow').style.display = 'none';
+  document.getElementById('runRow').style.display = 'flex';
+  document.getElementById('simBar').style.display = isSim ? 'flex' : 'none';
+
+  timer = setInterval(() => { if (!paused) { secs += sim ? simMult : 1; updUI(); } }, 1000);
+  if (isSim) {
+    simTimer = setInterval(() => {
+      if (paused) return;
+      simIdx = Math.min(routePts.length - 1, simIdx + Math.max(1, Math.floor(simMult / 4)));
+      moveRunner({ lat: routePts[simIdx][0], lng: routePts[simIdx][1] }, null);
+      if (simIdx >= routePts.length - 1) finishRun();
+    }, 220);
+  }
+}
+
+function togglePause() {
+  paused = !paused;
+  document.getElementById('pBtn').innerText = paused ? '▶ Дальше' : '⏸ Пауза';
+}
+
+function moveRunner(np, gpsSpd) {
+  const pr = track[track.length - 1];
+  const d = hav(pr[0], pr[1], np.lat, np.lng);
+  if (!sim && d > 0.12) return;
+  if (d >= 0.001) {
+    dist += d; steps += Math.round(d * 1310);
+    const spd = gpsSpd ? (gpsSpd * 3.6) : Math.min(22, (dist / Math.max(1, secs)) * 3600);
+    if (spd > maxSpd) maxSpd = spd;
+    marker.setLatLng(np); track.push([np.lat, np.lng]); trackLine.setLatLngs(track);
+
+    const wk = Math.floor(dist);
+    if (wk > lastKm) {
+      const sp = fmtPace(1, Math.max(175, secs - lastSec));
+      splits.push(`• ${wk} км: ${sp} /км`);
+      lastKm = wk; lastSec = secs;
+      const t = document.getElementById('toast');
+      document.getElementById('tTitle').innerText = `⚡ ${wk} КМ ПРОЙДЕН!`;
+      document.getElementById('tPace').innerText = `Темп ${sp} /км`;
+      t.style.display = 'flex';
+      setTimeout(() => t.style.display = 'none', 3000);
+    }
+    updUI();
+  }
+}
+
+async function finishRun() {
+  clearInterval(timer); clearInterval(simTimer); running = false;
+  document.getElementById('routeBuilderBox').style.display = 'block';
+  document.getElementById('startRow').style.display = 'flex';
+  document.getElementById('runRow').style.display = 'none';
+  document.getElementById('simBar').style.display = 'none';
+
+  const fDist = Math.max(0.05, dist), fSec = Math.max(15, secs), pace = fmtPace(fDist, fSec);
+  const avgSpd = ((fDist / fSec) * 3600).toFixed(1), pkSpd = Math.max(parseFloat(avgSpd) + 1.4, maxSpd).toFixed(1);
+  const kcal = Math.round(fDist * 69), cad = Math.min(190, Math.max(156, Math.round(steps / (fSec / 60))));
+  if (!splits.length) splits.push(`• Отрезок ${fDist.toFixed(2)} км: ${pace} /км`);
+
+  const rec = {
+    id: Date.now(),
+    date: new Date().toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    dist: parseFloat(fDist.toFixed(2)), secs: fSec, pace: pace, paceSec: fSec / fDist,
+    kcal: kcal, steps: steps, splits: splits, pts: track.slice(0, 100)
+  };
+  const list = getSavedRuns(); list.unshift(rec); setSavedRuns(list.slice(0, 50));
+
+  document.getElementById('repGrid').innerHTML = `
+    <div class="ri">Дистанция<b>${fDist.toFixed(2)} км</b></div>
+    <div class="ri">Время<b>${fmtTime(fSec)}</b></div>
+    <div class="ri">Темп<b>${pace} /км</b></div>
+    <div class="ri">Скорость<b>${avgSpd}/${pkSpd} км/ч</b></div>
+    <div class="ri">Шаги<b>${steps} (${cad}/м)</b></div>
+    <div class="ri">Калории<b>🔥 ${kcal} ккал</b></div>`;
+  document.getElementById('repSplits').innerHTML = `<b>Сплиты:</b><br>${splits.join('<br>')}`;
+  document.getElementById('modal').style.display = 'flex';
+
+  const v = getVault();
+  if (v) {
+    const txt = `🏆 *ОТЧЁТ О ПРОБЕЖКЕ*\n📅 ${rec.date}\n• Дистанция: *${rec.dist} км*\n• Время: *${fmtTime(rec.secs)}*\n• Темп: *${rec.pace} /км*\n• Калории: *${rec.kcal} ккал*\n${rec.splits.join('\n')}`;
+    fetch(`https://api.telegram.org/bot${v.t}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: v.c, text: txt, parse_mode: 'Markdown' }) });
+  }
+}
+
+function getSavedRuns() { try { return JSON.parse(localStorage.getItem('apex_runs_v4') || '[]'); } catch (e) { return []; } }
+function setSavedRuns(arr) { localStorage.setItem('apex_runs_v4', JSON.stringify(arr)); loadRunsHistory(); }
+
+function deleteRunById(id, ev) {
+  if (ev) ev.stopPropagation();
+  setSavedRuns(getSavedRuns().filter(r => r.id !== id));
+  trackLine.setLatLngs([]);
+}
+
+function clearAllRuns() {
+  if (confirm("Удалить все забеги?")) { setSavedRuns([]); trackLine.setLatLngs([]); }
+}
+
+function createSvgPreview(pts) {
+  if (!pts || pts.length < 2) return `<svg width="40" height="40"><circle cx="20" cy="20" r="6" fill="#ccff00"/></svg>`;
+  let minLa = 999, maxLa = -999, minLo = 999, maxLo = -999;
+  pts.forEach(p => { if (p[0] < minLa) minLa = p[0]; if (p[0] > maxLa) maxLa = p[0]; if (p[1] < minLo) minLo = p[1]; if (p[1] > maxLo) maxLo = p[1]; });
+  const dLa = Math.max(0.0005, maxLa - minLa), dLo = Math.max(0.0005, maxLo - minLo);
+  const poly = pts.map(p => `${(5 + ((p[1] - minLo) / dLo) * 50).toFixed(1)},${(55 - ((p[0] - minLa) / dLa) * 50).toFixed(1)}`).join(' ');
+  return `<svg width="60" height="60" viewBox="0 0 60 60"><polyline fill="none" stroke="#ccff00" stroke-width="3" points="${poly}"/></svg>`;
+}
+
+function loadRunsHistory() {
+  const runs = getSavedRuns();
+  let tot = 0, best = 99999;
+  runs.forEach(r => { tot += Number(r.dist || 0); if (r.dist >= 0.5 && r.paceSec < best) best = r.paceSec; });
+  document.getElementById('stTotalKm').innerText = tot.toFixed(1);
+  document.getElementById('stRunsCnt').innerText = runs.length;
+  document.getElementById('stBestPace').innerText = best < 9000 ? fmtTime(best) : "--:--";
+
+  const box = document.getElementById('runsList');
+  if (!runs.length) { box.innerHTML = `<div class="sec-card"><p>Пока нет забегов.</p></div>`; return; }
+  box.innerHTML = runs.map((r, i) => `
+    <div class="run-item" onclick="replayRun(${i})">
+      <div class="mini-track">${createSvgPreview(r.pts)}</div>
+      <div class="run-info">
+        <div class="run-title"><span>🏃 ${r.dist.toFixed(2)} км</span><span style="color:var(--lime)">${r.pace} /км</span></div>
+        <div class="run-sub">📅 ${r.date}</div>
+        <div><span class="r-badge">⏱ ${fmtTime(r.secs)}</span><span class="r-badge">🔥 ${r.kcal} ккал</span></div>
+      </div>
+      <button class="del-run-btn" onclick="deleteRunById(${r.id}, event)">🗑</button>
+    </div>`).join('');
+}
+
+function replayRun(i) {
+  const r = getSavedRuns()[i];
+  if (!r?.pts || r.pts.length < 2) return;
+  switchTab('run', document.querySelectorAll('.tab-item')[0]);
+  trackLine.setLatLngs(r.pts);
+  map.fitBounds(trackLine.getBounds(), { padding: [50, 50] });
+}
+
+function closeModalAndShowHistory() {
+  document.getElementById('modal').style.display = 'none';
+  switchTab('history', document.querySelectorAll('.tab-item')[1]);
+}
+
+let enteredPin = "", fails = 0, lockTime = 0;
+function xor(s, k) { let o = ""; for (let i = 0; i < s.length; i++) o += String.fromCharCode(s.charCodeAt(i) ^ k.charCodeAt(i % k.length)); return o; }
+
+function initVault() {
+  if (!localStorage.getItem('apex_v4_tok')) {
+    const k = OWNER_ID + "_KEY";
+    const raw = ["8819249191", "AAGGuQImmMRBA7_eqtyvtdd0uSMwa4Uyvyg"].join(":");
+    localStorage.setItem('apex_v4_tok', btoa(xor(raw, k)));
+  }
+}
+
+function getVault() {
+  const enc = localStorage.getItem('apex_v4_tok');
+  if (!enc) return null;
+  return { t: xor(atob(enc), OWNER_ID + "_KEY"), c: String(OWNER_ID) };
+}
+
+function checkSecurityLock() { if (localStorage.getItem('apex_pin')) document.getElementById('lockScreen').style.display = 'flex'; }
+
+function pressPin(d) {
+  if (Date.now() < lockTime) return;
+  if (enteredPin.length < 4) {
+    enteredPin += d;
+    for (let i = 0; i < 4; i++) document.getElementById('pd' + i).classList.toggle('filled', i < enteredPin.length);
+    if (enteredPin.length === 4) {
+      if (btoa(enteredPin) === localStorage.getItem('apex_pin')) {
+        fails = 0; document.getElementById('lockScreen').style.display = 'none'; enteredPin = "";
+      } else {
+        fails++;
+        if (fails >= 3) { lockTime = Date.now() + 30000; document.getElementById('lockSub').innerText = "🛑 Блокировка 30 сек"; }
+        else document.getElementById('lockSub').innerText = "❌ Неверный PIN!";
+        setTimeout(clearPin, 400);
+      }
+    }
+  }
+}
+
+function clearPin() { enteredPin = ""; for (let i = 0; i < 4; i++) document.getElementById('pd' + i).classList.remove('filled'); }
+function setupPinLock() { const p = prompt("Введи 4 цифры PIN:"); if (p && /^\d{4}$/.test(p)) { localStorage.setItem('apex_pin', btoa(p)); updateSecurityUI(); alert("✅ PIN включён!"); } }
+function disablePinLock() { localStorage.removeItem('apex_pin'); updateSecurityUI(); alert("PIN отключён"); }
+function updateSecurityUI() { document.getElementById('secUserStatus').innerText = `ID: ${tgUser.id} • PIN: ${localStorage.getItem('apex_pin') ? 'Включён' : 'Выключен'}`; }
+
+// АВТОМАТИЧЕСКАЯ ПРИВЯЗКА К БОТУ В 1 КЛИК
+async function connectBotOneClick() {
+  const v = getVault();
+  const currentUrl = window.location.href.split('#')[0];
+  if (!currentUrl.startsWith('https://')) {
+    alert("Сначала открой этот код по ссылке GitHub Pages (https://...), и кнопка сразу привяжется к боту!");
+    return;
+  }
+  await fetch(`https://api.telegram.org/bot${v.t}/setChatMenuButton`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: v.c, menu_button: { type: "web_app", text: "🏃 Запустить Бег", web_app: { url: currentUrl } } })
+  });
+  await fetch(`https://api.telegram.org/bot${v.t}/sendMessage`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: v.c,
+      text: "🔥 *APEX RUN PRO v4 подключён!*\nЖми кнопку ниже, чтобы запускать пробежки и смотреть историю прямо в Telegram:",
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: [[{ text: "🏃 ОТКРЫТЬ APEX RUN PRO", web_app: { url: currentUrl } }]] }
+    })
+  });
+  alert("✅ ГОТОВО! Зайди в своего бота в Telegram — там уже появилось сообщение и кнопка запуска!");
+}
+
+async function exportRunsToBot() {
+  const v = getVault(), runs = getSavedRuns();
+  if (!runs.length) { alert("Забегов пока нет"); return; }
+  const txt = runs.slice(0, 10).map((r, i) => `${i + 1}. ${r.date} — *${r.dist} км* (${r.pace})`).join('\n');
+  await fetch(`https://api.telegram.org/bot${v.t}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: v.c, text: `📊 *МОИ ЗАБЕГИ:*\n\n${txt}`, parse_mode: 'Markdown' }) });
+  alert("✅ Отправлено в бота!");
+}
+
+async function downloadOrSendCleanHtml() {
+  const clone = document.documentElement.cloneNode(true);
+  const m = clone.querySelector('#map'); if (m) { m.innerHTML = ""; m.className = ""; m.removeAttribute('style'); }
+  const blob = new Blob(["<!DOCTYPE html>\n" + clone.outerHTML], { type: "text/html;charset=utf-8" });
+  const v = getVault();
+  const fd = new FormData(); fd.append("chat_id", v.c); fd.append("document", blob, "index.html");
+  await fetch(`https://api.telegram.org/bot${v.t}/sendDocument`, { method: "POST", body: fd });
+  alert("✅ Готовый файл index.html отправлен тебе в Telegram-бота!");
+}
+
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('act'));
+  if (el) el.classList.add('act');
+  if (id === 'run' && map) setTimeout(() => map.invalidateSize(), 100);
+}
+
+function dest(lat, lng, dKm, brg) {
+  const R = 6371, b = brg * Math.PI / 180, d = dKm / R, la1 = lat * Math.PI / 180, lo1 = lng * Math.PI / 180;
+  const la2 = Math.asin(Math.sin(la1) * Math.cos(d) + Math.cos(la1) * Math.sin(d) * Math.cos(b));
+  const lo2 = lo1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la1), Math.cos(d) - Math.sin(la1) * Math.sin(la2));
+  return { lat: la2 * 180 / Math.PI, lng: lo2 * 180 / Math.PI };
+}
+
+function trimAndMirrorToExactKm(rawPts, targetKm) {
+  const half = targetKm / 2, out = [rawPts[0]]; let acc = 0;
+  for (let i = 1; i < rawPts.length; i++) {
+    const seg = hav(rawPts[i - 1][0], rawPts[i - 1][1], rawPts[i][0], rawPts[i][1]);
+    if (acc + seg >= half) {
+      const r = (half - acc) / Math.max(0.0001, seg);
+      out.push([rawPts[i - 1][0] + (rawPts[i][0] - rawPts[i - 1][0]) * r, rawPts[i - 1][1] + (rawPts[i][1] - rawPts[i - 1][1]) * r]);
+      break;
+    }
+    out.push(rawPts[i]); acc += seg;
+  }
+  return out.concat([...out].reverse().slice(1));
+}
+
+function totalLen(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += hav(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]); return s; }
+function updUI() { document.getElementById('vDist').innerText = dist.toFixed(2); document.getElementById('vTime').innerText = fmtTime(secs); document.getElementById('vPace').innerText = fmtPace(dist, secs); document.getElementById('vKcal').innerText = Math.round(dist * 69); }
+function fmtTime(s) { const m = Math.floor(s / 60), r = Math.floor(s % 60); return `${m < 10 ? '0' : ''}${m}:${r < 10 ? '0' : ''}${r}`; }
+function fmtPace(k, s) { if (k < 0.02) return '0:00'; return fmtTime(Math.min(900, Math.max(150, s / k))); }
+function hav(a1, o1, a2, o2) { const R = 6371, dLat = (a2 - a1) * Math.PI / 180, dLon = (o2 - o1) * Math.PI / 180, a = Math.sin(dLat / 2) ** 2 + Math.cos(a1 * Math.PI / 180) * Math.cos(a2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2; return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); }
+
+window.onload = initApp;
+</script>
+</body>
+</html>
